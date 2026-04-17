@@ -3,14 +3,14 @@ import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
 type Sql = postgres.Sql;
+const MISSING_POSTGRES_URL_MESSAGE =
+  'POSTGRES_URL is not set. Create .env.local with your Vercel Postgres variables, then restart the dev server.';
 
 function createSqlClient() {
   const connectionString = process.env.POSTGRES_URL;
 
   if (!connectionString) {
-    throw new Error(
-      'POSTGRES_URL is not set. Add your Vercel Postgres environment variables to .env first.',
-    );
+    throw new Error(MISSING_POSTGRES_URL_MESSAGE);
   }
 
   return postgres(connectionString, { ssl: 'require' });
@@ -54,12 +54,17 @@ async function seedInvoices(sql: Sql) {
     );
   `;
 
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS invoices_seed_unique_idx
+    ON invoices (customer_id, amount, status, date);
+  `;
+
   const insertedInvoices = await Promise.all(
     invoices.map(
       (invoice) => sql`
         INSERT INTO invoices (customer_id, amount, status, date)
         VALUES (${invoice.customer_id}, ${invoice.amount}, ${invoice.status}, ${invoice.date})
-        ON CONFLICT (id) DO NOTHING;
+        ON CONFLICT (customer_id, amount, status, date) DO NOTHING;
       `,
     ),
   );
@@ -119,12 +124,14 @@ export async function GET() {
   try {
     sql = createSqlClient();
 
-    await sql.begin((sql) => [
-      seedUsers(sql),
-      seedCustomers(sql),
-      seedInvoices(sql),
-      seedRevenue(sql),
-    ]);
+    await sql.begin(async (transaction) => {
+      await Promise.all([
+        seedUsers(transaction),
+        seedCustomers(transaction),
+        seedInvoices(transaction),
+        seedRevenue(transaction),
+      ]);
+    });
 
     return Response.json({ message: 'Database seeded successfully' });
   } catch (error) {

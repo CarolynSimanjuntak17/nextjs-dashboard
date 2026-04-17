@@ -1,12 +1,13 @@
 import postgres from 'postgres';
 
+const MISSING_POSTGRES_URL_MESSAGE =
+  'POSTGRES_URL is not set. Create .env.local with your Vercel Postgres variables, then restart the dev server.';
+
 function createSqlClient() {
   const connectionString = process.env.POSTGRES_URL;
 
   if (!connectionString) {
-    throw new Error(
-      'POSTGRES_URL is not set. Add your Vercel Postgres environment variables to .env first.',
-    );
+    throw new Error(MISSING_POSTGRES_URL_MESSAGE);
   }
 
   return postgres(connectionString, { ssl: 'require' });
